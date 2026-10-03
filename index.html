@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bologna FC — Partite</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+
+    header {
+      background: linear-gradient(135deg, #1a0a00 0%, #8B1A1A 50%, #c8102e 100%);
+      padding: 18px 24px; display: flex; align-items: center;
+      justify-content: space-between; box-shadow: 0 2px 16px rgba(139,26,26,0.5);
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .badge { width: 52px; height: 52px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .badge img { width: 44px; height: 44px; object-fit: contain; }
+    .badge-fallback { font-size: 26px; }
+    header h1 { font-size: 1.35rem; font-weight: 700; }
+    header p { font-size: 0.78rem; opacity: 0.75; margin-top: 2px; }
+    .refresh-info { text-align: right; font-size: 0.78rem; opacity: 0.85; }
+    #countdown { font-size: 1.1rem; font-weight: 700; color: #ffd700; }
+    .refresh-btn { margin-top: 6px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 5px 14px; border-radius: 20px; cursor: pointer; font-size: 0.78rem; transition: background 0.2s; }
+    .refresh-btn:hover { background: rgba(255,255,255,0.28); }
+
+    main { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
+    .meta-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 0.78rem; color: #8b949e; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab { padding: 7px 18px; border-radius: 20px; border: 1px solid #30363d; background: transparent; color: #8b949e; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+    .tab.active, .tab:hover { background: #8B1A1A; border-color: #c8102e; color: white; }
+
+    .day-group { margin-bottom: 28px; }
+    .day-header { font-size: 0.78rem; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.8px; padding: 5px 0; border-bottom: 1px solid #21262d; margin-bottom: 10px; }
+
+    .match-card { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr 140px 1fr; align-items: center; gap: 12px; transition: border-color 0.2s; position: relative; overflow: hidden; }
+    .match-card:hover { border-color: #c8102e; }
+    .match-card.live { border-color: #3fb950; }
+    .match-card.live::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #3fb950; }
+    .match-card.bologna-home { border-left: 3px solid #c8102e; }
+
+    .team { display: flex; align-items: center; gap: 10px; }
+    .team.away { flex-direction: row-reverse; text-align: right; }
+    .team-logo { width: 32px; height: 32px; object-fit: contain; }
+    .team-name { font-size: 0.9rem; font-weight: 600; color: #e6edf3; }
+    .team-name.bologna { color: #ffd700; }
+
+    .score-block { text-align: center; }
+    .score { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; }
+    .match-status { font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .status-live { color: #3fb950; }
+    .status-scheduled { color: #8b949e; }
+    .status-finished { color: #58a6ff; }
+    .match-meta { font-size: 0.7rem; color: #8b949e; margin-top: 3px; }
+    .competition-badge { display: inline-block; background: #21262d; color: #8b949e; font-size: 0.65rem; padding: 2px 7px; border-radius: 10px; margin-top: 3px; }
+
+    .live-dot { display: inline-block; width: 7px; height: 7px; background: #3fb950; border-radius: 50%; margin-right: 4px; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
+
+    #status-bar { text-align: center; padding: 10px; font-size: 0.82rem; color: #8b949e; min-height: 24px; }
+    #status-bar.error { color: #f85149; }
+    #status-bar.loading { color: #ffd700; }
+
+    .empty { text-align: center; padding: 48px; color: #8b949e; }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+
+    .skeleton { background: linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%); background-size: 400% 100%; animation: shimmer 1.4s ease-in-out infinite; border-radius: 10px; height: 68px; margin-bottom: 8px; }
+    @keyframes shimmer { 0%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+    @media(max-width:600px){ .match-card{grid-template-columns:1fr 80px 1fr;padding:12px} .team-name{font-size:.78rem} .score{font-size:1.1rem} }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="badge">
+      <img id="club-logo" src="" onerror="this.style.display='none';document.getElementById('badge-fallback').style.display='flex';" style="display:none">
+      <span id="badge-fallback" class="badge-fallback" style="display:flex">⚽</span>
+    </div>
+    <div>
+      <h1>Bologna FC 1909</h1>
+      <p id="season-label">Caricamento...</p>
+    </div>
+  </div>
+  <div class="refresh-info">
+    <div>Prossimo aggiornamento: <span id="countdown">60s</span></div>
+    <button class="refresh-btn" onclick="loadMatches()">↻ Aggiorna ora</button>
+  </div>
+</header>
+
+<main>
+  <div class="meta-bar">
+    <span id="last-update">—</span>
+    <span id="match-count" style="color:#8b949e;"></span>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="filterMatches('ALL',this)">Tutte</button>
+    <button class="tab" onclick="filterMatches('LIVE',this)">🔴 Live</button>
+    <button class="tab" onclick="filterMatches('FUTURE',this)">Prossime</button>
+    <button class="tab" onclick="filterMatches('PAST',this)">Risultati</button>
+  </div>
+  <div id="matches-container">
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+  </div>
+  <div id="status-bar" class="loading">Ricerca Bologna FC su ESPN...</div>
+</main>
+
+<script>
+  // ESPN: Serie A = ita.1
+  // Usiamo solo l'endpoint scoreboard (CORS ok da file://) filtrando per Bologna
+  const LEAGUE = 'ita.1';
+  const BOLOGNA_NAMES = ['bologna'];
+  let allEvents = [];
+  let activeFilter = 'ALL';
+  let countdownVal = 60;
+  let countdownTimer = null;
+  let logoSet = false;
+
+  function isBolognaMatch(event) {
+    const competitors = event.competitions?.[0]?.competitors || [];
+    return competitors.some(c =>
+      BOLOGNA_NAMES.some(b => (c.team?.name || c.team?.displayName || '').toLowerCase().includes(b))
+    );
+  }
+
+  function trySetLogo(event) {
+    if (logoSet) return;
+    const competitors = event.competitions?.[0]?.competitors || [];
+    const bol = competitors.find(c =>
+      BOLOGNA_NAMES.some(b => (c.team?.name || '').toLowerCase().includes(b))
+    );
+    const logo = bol?.team?.logo || bol?.team?.logos?.[0]?.href;
+    if (logo) {
+      const img = document.getElementById('club-logo');
+      img.src = logo;
+      img.style.display = 'block';
+      document.getElementById('badge-fallback').style.display = 'none';
+      logoSet = true;
+    }
+  }
+
+  async function fetchMonth(yyyymm) {
+    try {
+      const r = await fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/soccer/${LEAGUE}/scoreboard?dates=${yyyymm}&limit=200`
+      );
+      if (r.ok) return r.json();
+    } catch(e) {}
+    return null;
+  }
+
+  function getMonthsToFetch() {
+    const months = [];
+    const now = new Date();
+    for (let offset = -2; offset <= 6; offset++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      months.push(`${d.getFullYear()}${mm}`);
+    }
+    return months;
+  }
+
+  async function loadMatches() {
+    setStatus('Caricamento partite Bologna...', 'loading');
+    showSkeleton();
+
+    try {
+      const months = getMonthsToFetch();
+      // Fetch all months in parallel
+      const results = await Promise.all(months.map(m => fetchMonth(m)));
+
+      const eventsMap = new Map();
+      let seasonSet = false;
+
+      results.forEach(data => {
+        if (!data?.events) return;
+        if (!seasonSet && data.season?.year) {
+          const yr = data.season.year;
+          document.getElementById('season-label').textContent = `Serie A ${yr-1}/${String(yr).slice(2)}`;
+          seasonSet = true;
+        }
+        data.events.forEach(ev => {
+          if (isBolognaMatch(ev)) {
+            eventsMap.set(ev.id, ev);
+            trySetLogo(ev);
+          }
+        });
+      });
+
+      allEvents = Array.from(eventsMap.values());
+      allEvents.sort((a,b) => new Date(a.date) - new Date(b.date));
+
+      renderMatches(activeFilter);
+
+      document.getElementById('last-update').textContent =
+        'Aggiornato: ' + new Date().toLocaleTimeString('it-IT');
+      document.getElementById('match-count').textContent =
+        allEvents.length + ' partite';
+
+      if (allEvents.length === 0) {
+        setStatus('Nessuna partita trovata per Bologna FC', 'error');
+      } else {
+        setStatus('', '');
+      }
+      resetCountdown();
+
+    } catch(e) {
+      console.error(e);
+      setStatus('⚠️ ' + e.message, 'error');
+      document.getElementById('matches-container').innerHTML =
+        `<div class="empty"><div class="empty-icon">📡</div><p>Impossibile caricare i dati.<br><small style="color:#8b949e">Controlla la connessione internet.</small></p></div>`;
+    }
+  }
+
+  function getEventStatus(event) {
+    const s = event.status?.type?.state;
+    if (s === 'in') return 'LIVE';
+    if (s === 'post') return 'PAST';
+    return 'FUTURE';
+  }
+
+  function isBolognaHome(event) {
+    const comp = event.competitions?.[0];
+    if (!comp) return false;
+    const home = comp.competitors?.find(c => c.homeAway === 'home');
+    return BOLOGNA_NAMES.some(b => (home?.team?.name || '').toLowerCase().includes(b));
+  }
+
+  function renderMatches(filter) {
+    activeFilter = filter;
+    const container = document.getElementById('matches-container');
+    let list = allEvents;
+
+    if (filter === 'LIVE') list = allEvents.filter(e => getEventStatus(e) === 'LIVE');
+    else if (filter === 'FUTURE') list = allEvents.filter(e => getEventStatus(e) === 'FUTURE');
+    else if (filter === 'PAST') list = allEvents.filter(e => getEventStatus(e) === 'PAST').reverse();
+    else {
+      const live   = allEvents.filter(e => getEventStatus(e) === 'LIVE');
+      const future = allEvents.filter(e => getEventStatus(e) === 'FUTURE');
+      const past   = allEvents.filter(e => getEventStatus(e) === 'PAST').reverse();
+      list = [...live, ...future, ...past];
+    }
+
+    if (!list.length) {
+      container.innerHTML = '<div class="empty"><div class="empty-icon">⚽</div><p>Nessuna partita in questa categoria.</p></div>';
+      return;
+    }
+
+    const groups = {};
+    list.forEach(e => {
+      const d = new Date(e.date);
+      const key = d.toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(e);
+    });
+
+    let html = '';
+    for (const [date, matches] of Object.entries(groups)) {
+      html += `<div class="day-group"><div class="day-header">${date}</div>`;
+      matches.forEach(m => { html += buildCard(m); });
+      html += '</div>';
+    }
+    container.innerHTML = html;
+  }
+
+  function buildCard(event) {
+    const comp = event.competitions?.[0];
+    if (!comp) return '';
+    const competitors = comp.competitors || [];
+    const home = competitors.find(c => c.homeAway === 'home') || competitors[0];
+    const away = competitors.find(c => c.homeAway === 'away') || competitors[1];
+    if (!home || !away) return '';
+
+    const status = getEventStatus(event);
+    const isLive = status === 'LIVE';
+    const isPast = status === 'PAST';
+    const bolHome = BOLOGNA_NAMES.some(b => (home.team?.name || '').toLowerCase().includes(b));
+    const bolAway = BOLOGNA_NAMES.some(b => (away.team?.name || '').toLowerCase().includes(b));
+
+    const homeName = home.team?.shortDisplayName || home.team?.displayName || '—';
+    const awayName = away.team?.shortDisplayName || away.team?.displayName || '—';
+    const homeLogo = home.team?.logo || '';
+    const awayLogo = away.team?.logo || '';
+    const homeScore = home.score ?? '–';
+    const awayScore = away.score ?? '–';
+
+    const homeImg = homeLogo ? `<img src="${homeLogo}" class="team-logo" onerror="this.style.display='none'">` : '';
+    const awayImg = awayLogo ? `<img src="${awayLogo}" class="team-logo" onerror="this.style.display='none'">` : '';
+
+    let scoreHtml = '';
+    if (isLive || isPast) {
+      scoreHtml = `<div class="score">${homeScore} – ${awayScore}</div>`;
+    } else {
+      const t = new Date(event.date).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      scoreHtml = `<div class="score" style="font-size:1rem;color:#8b949e;">${t}</div>`;
+    }
+
+    const clock = event.status?.displayClock;
+    let statusHtml = '';
+    if (isLive) {
+      statusHtml = `<div class="match-status status-live"><span class="live-dot"></span>${clock || 'Live'}</div>`;
+    } else if (isPast) {
+      statusHtml = `<div class="match-status status-finished">Finita</div>`;
+    } else {
+      statusHtml = `<div class="match-status status-scheduled">Programmata</div>`;
+    }
+
+    // Competition name
+    const compName = event.competitions?.[0]?.series?.title || event.name?.split(' - ')[0] || '';
+    const compBadge = compName ? `<div class="competition-badge">${compName}</div>` : '';
+
+    const cardClass = `match-card ${isLive ? 'live' : ''} ${bolHome ? 'bologna-home' : ''}`;
+
+    return `
+      <div class="${cardClass}">
+        <div class="team home">
+          ${homeImg}
+          <span class="team-name ${bolHome ? 'bologna' : ''}">${homeName}</span>
+        </div>
+        <div class="score-block">
+          ${scoreHtml}
+          ${statusHtml}
+          ${compBadge}
+        </div>
+        <div class="team away">
+          <span class="team-name ${bolAway ? 'bologna' : ''}">${awayName}</span>
+          ${awayImg}
+        </div>
+      </div>`;
+  }
+
+  function filterMatches(f, btn) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    renderMatches(f);
+  }
+
+  function showSkeleton() {
+    document.getElementById('matches-container').innerHTML =
+      '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+  }
+
+  function startCountdown() {
+    clearInterval(countdownTimer);
+    countdownVal = 60;
+    countdownTimer = setInterval(() => {
+      countdownVal--;
+      document.getElementById('countdown').textContent = countdownVal + 's';
+      if (countdownVal <= 0) loadMatches();
+    }, 1000);
+  }
+
+  function resetCountdown() { countdownVal = 60; document.getElementById('countdown').textContent = '60s'; }
+  function setStatus(msg, type) { const el = document.getElementById('status-bar'); el.textContent = msg; el.className = type; }
+
+  loadMatches();
+  startCountdown();
+</script>
+</body>
+</html>
