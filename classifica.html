@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bologna FC · Classifica</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+
+    header {
+      background: linear-gradient(135deg, #1a0a00 0%, #8B1A1A 50%, #c8102e 100%);
+      padding: 18px 24px; display: flex; align-items: center;
+      justify-content: space-between; gap: 12px; box-shadow: 0 2px 16px rgba(139,26,26,0.5);
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .badge { width: 52px; height: 52px; flex-shrink: 0; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .badge img { width: 44px; height: 44px; object-fit: contain; }
+    header h1 { font-size: 1.35rem; font-weight: 700; }
+    header p { font-size: 0.78rem; opacity: 0.75; margin-top: 2px; }
+    .refresh-info { text-align: right; font-size: 0.78rem; opacity: 0.85; flex-shrink: 0; }
+    .refresh-btn { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 5px 14px; border-radius: 20px; cursor: pointer; font-size: 0.78rem; transition: background 0.2s; }
+    .refresh-btn:hover { background: rgba(255,255,255,0.28); }
+
+    .site-nav { background: #161b22; border-bottom: 1px solid #21262d; display: flex; justify-content: center; gap: 4px; padding: 0 16px; }
+    .site-nav a { color: #8b949e; text-decoration: none; font-size: 0.9rem; font-weight: 600; padding: 12px 18px; border-bottom: 3px solid transparent; transition: color 0.2s, border-color 0.2s; }
+    .site-nav a:hover { color: #e6edf3; }
+    .site-nav a.active { color: #ffd700; border-bottom-color: #c8102e; }
+
+    main { max-width: 860px; margin: 0 auto; padding: 24px 16px 40px; }
+    .meta-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 0.78rem; color: #8b949e; gap: 8px; flex-wrap: wrap; }
+
+    /* Scheda Bologna */
+    .bfc-card { background: linear-gradient(135deg, rgba(200,16,46,0.18), rgba(22,27,34,1) 60%); border: 1px solid #8B1A1A; border-radius: 12px; padding: 18px; margin-bottom: 22px; display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
+    .bfc-pos { text-align: center; min-width: 84px; }
+    .bfc-pos .num { font-size: 2.6rem; font-weight: 800; color: #ffd700; line-height: 1; }
+    .bfc-pos .lbl { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 4px; }
+    .bfc-stats { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+    .bfc-stat .v { font-size: 1.2rem; font-weight: 700; }
+    .bfc-stat .k { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.6px; }
+    .bfc-gaps { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+    .gap-chip { background: #21262d; border-radius: 20px; padding: 5px 12px; font-size: 0.8rem; color: #e6edf3; }
+    .gap-chip b { color: #ffd700; }
+
+    /* Tabella */
+    .table-wrap { background: #161b22; border: 1px solid #21262d; border-radius: 10px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    thead th { font-size: 0.68rem; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.6px; padding: 10px 6px; text-align: center; border-bottom: 1px solid #21262d; background: #11161d; }
+    thead th.team-col { text-align: left; }
+    tbody td { padding: 9px 6px; text-align: center; border-bottom: 1px solid #1c2128; font-variant-numeric: tabular-nums; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #1c2128; }
+    td.pos { position: relative; width: 40px; font-weight: 700; color: #8b949e; }
+    td.pos::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 4px; border-radius: 0 3px 3px 0; background: var(--zone, transparent); }
+    td.team { text-align: left; }
+    .team-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .team-cell img { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+    .team-cell span { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    td.pts { font-weight: 800; color: #e6edf3; }
+    td.muted { color: #8b949e; }
+    tr.is-bfc { background: rgba(200,16,46,0.16); }
+    tr.is-bfc:hover { background: rgba(200,16,46,0.24); }
+    tr.is-bfc .team-cell span { color: #ffd700; }
+    tr.is-bfc td.pos { color: #ffd700; }
+
+    .form { display: inline-flex; gap: 3px; }
+    .form i { width: 17px; height: 17px; border-radius: 4px; font-style: normal; font-size: 0.62rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; color: #0d1117; }
+    .form .V { background: #3fb950; }
+    .form .N { background: #8b949e; }
+    .form .P { background: #f85149; }
+    .form .empty { background: #21262d; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 0.78rem; color: #8b949e; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .footnote { margin-top: 12px; font-size: 0.72rem; color: #6e7681; line-height: 1.5; }
+
+    #status-bar { text-align: center; padding: 10px; font-size: 0.82rem; color: #8b949e; min-height: 24px; }
+    #status-bar.error { color: #f85149; }
+    #status-bar.loading { color: #ffd700; }
+    .skeleton { background: linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%); background-size: 400% 100%; animation: shimmer 1.4s ease-in-out infinite; border-radius: 10px; height: 38px; margin-bottom: 6px; }
+    @keyframes shimmer { 0%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+    @media (max-width: 600px) {
+      header { padding: 14px 16px; }
+      header h1 { font-size: 1.1rem; }
+      .badge { width: 44px; height: 44px; }
+      .badge img { width: 36px; height: 36px; }
+      .site-nav a { padding: 11px 14px; }
+      .hide-sm { display: none; }
+      table { font-size: 0.8rem; }
+      tbody td, thead th { padding-left: 4px; padding-right: 4px; }
+      .team-cell img { width: 18px; height: 18px; }
+      .team-cell span { max-width: 110px; }
+      .bfc-card { grid-template-columns: 1fr; text-align: left; }
+      .bfc-pos { display: flex; align-items: baseline; gap: 10px; text-align: left; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="badge"><img src="https://a.espncdn.com/i/teamlogos/soccer/500/107.png" alt="Bologna" onerror="this.replaceWith(document.createTextNode('⚽'))"></div>
+    <div>
+      <h1>Bologna FC 1909</h1>
+      <p id="season-label">Classifica Serie A</p>
+    </div>
+  </div>
+  <div class="refresh-info">
+    <button class="refresh-btn" onclick="loadStandings()">↻ Aggiorna</button>
+  </div>
+</header>
+
+<nav class="site-nav">
+  <a href="index.html">Partite</a>
+  <a href="classifica.html" class="active">Classifica</a>
+</nav>
+
+<main>
+  <div class="meta-bar">
+    <span id="last-update">Caricamento...</span>
+    <span id="round-info"></span>
+  </div>
+
+  <div id="bfc-card"></div>
+
+  <div id="table-container">
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <p class="footnote" id="footnote"></p>
+  <div id="status-bar" class="loading">Calcolo della classifica...</div>
+</main>
+
+<script>
+  const LEAGUE = 'ita.1';
+  const API = 'https://site.api.espn.com/apis';
+  const isBologna = name => (name || '').toLowerCase().includes('bologna');
+
+  // Zone europee e retrocessione: prese da ESPN se disponibili, altrimenti queste
+  const FALLBACK_ZONES = { 1:'Champions League', 2:'Champions League', 3:'Champions League', 4:'Champions League',
+    5:'Europa League', 6:'Europa League', 7:'Conference League qualifying', 18:'Relegated', 19:'Relegated', 20:'Relegated' };
+  const ZONE_STYLE = [
+    { key: 'champions',  label: 'Champions League',  color: '#4c8dff' },
+    { key: 'europa',     label: 'Europa League',     color: '#f0883e' },
+    { key: 'conference', label: 'Conference League', color: '#3fb950' },
+    { key: 'relegat',    label: 'Retrocessione',     color: '#f85149' },
+  ];
+  const zoneOf = desc => ZONE_STYLE.find(z => (desc || '').toLowerCase().includes(z.key)) || null;
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  async function fetchJSON(url) {
+    try { const r = await fetch(url); if (r.ok) return await r.json(); } catch (e) {}
+    return null;
+  }
+
+  // Mesi della stagione in corso: da agosto a oggi (a luglio mostra la stagione appena finita)
+  function seasonMonths() {
+    const now = new Date();
+    const startYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+    const months = [];
+    const d = new Date(startYear, 7, 1);
+    while (d <= now && months.length < 12) {
+      months.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`);
+      d.setMonth(d.getMonth() + 1);
+    }
+    return months;
+  }
+
+  function newRow(team) {
+    return { id: team.id, name: team.shortDisplayName || team.displayName || team.name || '?',
+      logo: team.logo || team.logos?.[0]?.href || '', gp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0, results: [] };
+  }
+
+  // Ordinamento: punti, poi scontri diretti tra le squadre a pari punti, poi differenza reti, gol fatti
+  function sortRows(rows, matches) {
+    rows.sort((a, b) => b.pts - a.pts);
+    const out = [];
+    for (let i = 0; i < rows.length; ) {
+      let j = i;
+      while (j < rows.length && rows[j].pts === rows[i].pts) j++;
+      const group = rows.slice(i, j);
+      if (group.length > 1) {
+        const ids = new Set(group.map(r => r.id));
+        const h2h = {};
+        group.forEach(r => h2h[r.id] = { pts: 0, gd: 0 });
+        matches.forEach(m => {
+          if (!ids.has(m.homeId) || !ids.has(m.awayId)) return;
+          h2h[m.homeId].gd += m.hs - m.as; h2h[m.awayId].gd += m.as - m.hs;
+          if (m.hs > m.as) h2h[m.homeId].pts += 3;
+          else if (m.hs < m.as) h2h[m.awayId].pts += 3;
+          else { h2h[m.homeId].pts += 1; h2h[m.awayId].pts += 1; }
+        });
+        group.sort((a, b) =>
+          (h2h[b.id].pts - h2h[a.id].pts) || (h2h[b.id].gd - h2h[a.id].gd) ||
+          ((b.gf - b.ga) - (a.gf - a.ga)) || (b.gf - a.gf) || a.name.localeCompare(b.name));
+      }
+      out.push(...group);
+      i = j;
+    }
+    return out;
+  }
+
+  async function loadStandings() {
+    setStatus('Calcolo della classifica...', 'loading');
+
+    const months = seasonMonths();
+    const [standingsData, ...boards] = await Promise.all([
+      fetchJSON(`${API}/v2/sports/soccer/${LEAGUE}/standings`),
+      ...months.map(m => fetchJSON(`${API}/site/v2/sports/soccer/${LEAGUE}/scoreboard?dates=${m}&limit=200`))
+    ]);
+
+    // 1. Partite giocate dalla stagione in corso
+    const teams = new Map();
+    const matches = [];
+    const seen = new Set();
+    let liveCount = 0;
+    let seasonName = '';
+
+    boards.forEach(data => {
+      if (!data?.events) return;
+      if (!seasonName) seasonName = data.leagues?.[0]?.season?.displayName || '';
+      data.events.forEach(ev => {
+        if (seen.has(ev.id)) return;
+        seen.add(ev.id);
+        const comp = ev.competitions?.[0];
+        const home = comp?.competitors?.find(c => c.homeAway === 'home');
+        const away = comp?.competitors?.find(c => c.homeAway === 'away');
+        if (!home?.team || !away?.team) return;
+        [home, away].forEach(c => { if (!teams.has(c.team.id)) teams.set(c.team.id, newRow(c.team)); });
+        const st = ev.status?.type || {};
+        if (st.state === 'in') liveCount++;
+        if (st.state !== 'post' || !st.completed) return;
+        const hs = parseInt(home.score, 10), as = parseInt(away.score, 10);
+        if (isNaN(hs) || isNaN(as)) return;
+        matches.push({ date: ev.date, homeId: home.team.id, awayId: away.team.id, hs, as });
+      });
+    });
+
+    matches.sort((a, b) => new Date(a.date) - new Date(b.date));
+    matches.forEach(m => {
+      const h = teams.get(m.homeId), a = teams.get(m.awayId);
+      h.gp++; a.gp++; h.gf += m.hs; h.ga += m.as; a.gf += m.as; a.ga += m.hs;
+      const tip = `${h.name} ${m.hs}-${m.as} ${a.name}`;
+      if (m.hs > m.as) { h.w++; h.pts += 3; a.l++; h.results.push(['V', tip]); a.results.push(['P', tip]); }
+      else if (m.hs < m.as) { a.w++; a.pts += 3; h.l++; h.results.push(['P', tip]); a.results.push(['V', tip]); }
+      else { h.d++; a.d++; h.pts++; a.pts++; h.results.push(['N', tip]); a.results.push(['N', tip]); }
+    });
+
+    // 2. Dati ufficiali ESPN: zone per posizione e, se più aggiornati, i numeri
+    const entries = standingsData?.children?.[0]?.standings?.entries || [];
+    const zones = {};
+    let espnRows = [];
+    entries.forEach(e => {
+      const stat = n => e.stats?.find(s => s.name === n)?.value ?? 0;
+      const rank = stat('rank');
+      if (e.note?.description && rank) zones[rank] = e.note.description;
+      if (e.team && !teams.has(e.team.id)) teams.set(e.team.id, newRow(e.team));
+      const row = { ...newRow(e.team || {}), rank, gp: stat('gamesPlayed'), w: stat('wins'), d: stat('ties'), l: stat('losses'),
+        gf: stat('pointsFor'), ga: stat('pointsAgainst'), pts: stat('points') };
+      row.results = teams.get(row.id)?.results || [];
+      espnRows.push(row);
+    });
+    const zoneMap = Object.keys(zones).length ? zones : FALLBACK_ZONES;
+
+    const computedGP = matches.length * 2;
+    const espnGP = espnRows.reduce((s, r) => s + r.gp, 0);
+
+    let rows, source;
+    if (espnGP > computedGP) {
+      rows = espnRows.sort((a, b) => a.rank - b.rank);
+      source = 'espn';
+    } else {
+      rows = sortRows([...teams.values()], matches);
+      source = 'calcolata';
+    }
+
+    if (!rows.length) {
+      setStatus('⚠️ Impossibile caricare la classifica. Controlla la connessione e riprova.', 'error');
+      document.getElementById('table-container').innerHTML = '';
+      return;
+    }
+
+    if (seasonName) {
+      const yr = seasonName.match(/(\d{4})-(\d{2})/);
+      document.getElementById('season-label').textContent = yr ? `Classifica Serie A ${yr[1]}/${yr[2]}` : 'Classifica Serie A';
+    }
+    const round = Math.max(...rows.map(r => r.gp));
+    document.getElementById('round-info').textContent = round ? `Dopo ${round} ${round === 1 ? 'giornata' : 'giornate'}` : 'Campionato non ancora iniziato';
+    document.getElementById('last-update').textContent = 'Aggiornato: ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+
+    renderBologna(rows, zoneMap);
+    renderTable(rows, zoneMap);
+    renderLegend(zoneMap);
+
+    document.getElementById('footnote').textContent =
+      (source === 'calcolata'
+        ? 'Classifica calcolata dai risultati ufficiali ESPN. A pari punti contano gli scontri diretti, poi la differenza reti e i gol fatti.'
+        : 'Classifica ufficiale ESPN.')
+      + (liveCount ? ` Ci sono ${liveCount} partite in corso: il risultato entra in classifica a fine gara.` : '');
+    setStatus('', '');
+  }
+
+  function formHtml(results) {
+    const last = results.slice(-5);
+    const cells = last.map(([r, tip]) => `<i class="${r}" title="${esc(tip)}">${r}</i>`);
+    while (cells.length < 5) cells.unshift('<i class="empty"></i>');
+    return `<span class="form">${cells.join('')}</span>`;
+  }
+
+  function renderTable(rows, zoneMap) {
+    const body = rows.map((r, i) => {
+      const pos = i + 1;
+      const z = zoneOf(zoneMap[pos]);
+      const bfc = isBologna(r.name);
+      const gd = r.gf - r.ga;
+      const logo = r.logo ? `<img src="${esc(r.logo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '';
+      return `<tr class="${bfc ? 'is-bfc' : ''}">
+        <td class="pos" style="--zone:${z ? z.color : 'transparent'}">${pos}</td>
+        <td class="team"><div class="team-cell">${logo}<span>${esc(r.name)}</span></div></td>
+        <td class="pts">${r.pts}</td>
+        <td class="muted">${r.gp}</td>
+        <td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
+        <td class="muted hide-sm">${r.gf}</td><td class="muted hide-sm">${r.ga}</td>
+        <td>${gd > 0 ? '+' + gd : gd}</td>
+        <td class="hide-sm">${formHtml(r.results)}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('table-container').innerHTML = `
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th title="Posizione">#</th><th class="team-col">Squadra</th>
+          <th title="Punti">Pt</th><th title="Giocate">G</th>
+          <th title="Vinte">V</th><th title="Pareggiate">N</th><th title="Perse">P</th>
+          <th class="hide-sm" title="Gol fatti">GF</th><th class="hide-sm" title="Gol subiti">GS</th>
+          <th title="Differenza reti">DR</th><th class="hide-sm">Ultime 5</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>`;
+  }
+
+  function renderBologna(rows, zoneMap) {
+    const idx = rows.findIndex(r => isBologna(r.name));
+    const el = document.getElementById('bfc-card');
+    if (idx < 0) { el.innerHTML = ''; return; }
+    const b = rows[idx], pos = idx + 1;
+    const gd = b.gf - b.ga;
+
+    const chips = [];
+    if (pos === 1) {
+      const second = rows[1];
+      chips.push(second ? `In testa, <b>+${b.pts - second.pts}</b> sul 2° posto` : 'In testa alla classifica');
+    } else {
+      chips.push(`<b>-${rows[0].pts - b.pts}</b> dalla vetta (${esc(rows[0].name)})`);
+    }
+    const uclLast = Math.max(0, ...Object.keys(zoneMap).filter(k => zoneOf(zoneMap[k])?.key === 'champions').map(Number));
+    if (uclLast && rows[uclLast - 1] && rows[uclLast]) {
+      if (pos <= uclLast) chips.push(`In zona Champions, <b>+${b.pts - rows[uclLast].pts}</b> sul ${uclLast + 1}° posto`);
+      else chips.push(`<b>-${rows[uclLast - 1].pts - b.pts}</b> dalla zona Champions`);
+    }
+    const relFirst = Math.min(99, ...Object.keys(zoneMap).filter(k => zoneOf(zoneMap[k])?.key === 'relegat').map(Number));
+    if (relFirst < 99 && rows[relFirst - 1] && pos < relFirst) chips.push(`<b>+${b.pts - rows[relFirst - 1].pts}</b> sulla zona retrocessione`);
+
+    el.innerHTML = `
+      <div class="bfc-card">
+        <div class="bfc-pos"><div class="num">${pos}°</div><div class="lbl">Posizione</div></div>
+        <div class="bfc-stats">
+          <div class="bfc-stat"><div class="v">${b.pts}</div><div class="k">Punti</div></div>
+          <div class="bfc-stat"><div class="v">${b.w}-${b.d}-${b.l}</div><div class="k">V-N-P</div></div>
+          <div class="bfc-stat"><div class="v">${b.gf}:${b.ga}</div><div class="k">Gol</div></div>
+          <div class="bfc-stat"><div class="v">${gd > 0 ? '+' + gd : gd}</div><div class="k">Diff. reti</div></div>
+          <div class="bfc-stat"><div class="v">${formHtml(b.results)}</div><div class="k">Ultime 5</div></div>
+        </div>
+        <div class="bfc-gaps">${chips.map(c => `<span class="gap-chip">${c}</span>`).join('')}</div>
+      </div>`;
+  }
+
+  function renderLegend(zoneMap) {
+    const present = ZONE_STYLE.filter(z => Object.values(zoneMap).some(d => zoneOf(d)?.key === z.key));
+    document.getElementById('legend').innerHTML =
+      present.map(z => `<span><i style="background:${z.color}"></i>${z.label}</span>`).join('');
+  }
+
+  function setStatus(msg, type) { const el = document.getElementById('status-bar'); el.textContent = msg; el.className = type; }
+
+  loadStandings();
+  setInterval(loadStandings, 120000);
+</script>
+</body>
+</html>
