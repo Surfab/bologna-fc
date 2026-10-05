@@ -350,20 +350,27 @@
     const b = rows[idx], pos = idx + 1;
     const gd = b.gf - b.ga;
 
+    // Distanze: "pari punti" quando la differenza è zero
+    const ahead = (n, what) => n === 0 ? `<b>pari punti</b> con ${what}` : `<b>+${n}</b> ${what.replace(/^il /, 'sul ').replace(/^la /, 'sulla ')}`;
+    const behind = (n, what) => n === 0 ? `<b>pari punti</b> con ${what}` : `<b>-${n}</b> ${what.replace(/^il /, 'dal ').replace(/^la /, 'dalla ')}`;
+
     const chips = [];
     if (pos === 1) {
       const second = rows[1];
-      chips.push(second ? `In testa, <b>+${b.pts - second.pts}</b> sul 2° posto` : 'In testa alla classifica');
+      chips.push(second ? `In testa, ${ahead(b.pts - second.pts, 'il 2° posto')}` : 'In testa alla classifica');
     } else {
-      chips.push(`<b>-${rows[0].pts - b.pts}</b> dalla vetta (${esc(rows[0].name)})`);
+      chips.push(`${behind(rows[0].pts - b.pts, 'la vetta')} (${esc(rows[0].name)})`);
     }
     const uclLast = Math.max(0, ...Object.keys(zoneMap).filter(k => zoneOf(zoneMap[k])?.key === 'champions').map(Number));
     if (uclLast && rows[uclLast - 1] && rows[uclLast]) {
-      if (pos <= uclLast) chips.push(`In zona Champions, <b>+${b.pts - rows[uclLast].pts}</b> sul ${uclLast + 1}° posto`);
-      else chips.push(`<b>-${rows[uclLast - 1].pts - b.pts}</b> dalla zona Champions`);
+      if (pos <= uclLast) chips.push(`In zona Champions, ${ahead(b.pts - rows[uclLast].pts, `il ${uclLast + 1}° posto`)}`);
+      else chips.push(behind(rows[uclLast - 1].pts - b.pts, 'la zona Champions'));
     }
     const relFirst = Math.min(99, ...Object.keys(zoneMap).filter(k => zoneOf(zoneMap[k])?.key === 'relegat').map(Number));
-    if (relFirst < 99 && rows[relFirst - 1] && pos < relFirst) chips.push(`<b>+${b.pts - rows[relFirst - 1].pts}</b> sulla zona retrocessione`);
+    if (relFirst < 99 && rows[relFirst - 1] && rows[relFirst - 2]) {
+      if (pos < relFirst) chips.push(ahead(b.pts - rows[relFirst - 1].pts, 'la zona retrocessione'));
+      else chips.push(`In zona retrocessione, ${behind(rows[relFirst - 2].pts - b.pts, 'la salvezza')}`);
+    }
 
     el.innerHTML = `
       <div class="bfc-card">
