@@ -128,6 +128,15 @@
   let countdownTimer = null;
   let logoSet = false;
 
+  // Etichetta stagione dai dati ESPN, es. "2026-27 Italian Serie A" -> "2026/27"
+  function seasonText(data) {
+    const s = data?.leagues?.[0]?.season || data?.season;
+    const m = (s?.displayName || '').match(/(\d{4})-(\d{2})/);
+    if (m) return `${m[1]}/${m[2]}`;
+    if (s?.year) return `${s.year}/${String(s.year + 1).slice(2)}`;
+    return '';
+  }
+
   function isBolognaMatch(event) {
     const competitors = event.competitions?.[0]?.competitors || [];
     return competitors.some(c =>
@@ -186,9 +195,8 @@
 
       results.forEach(data => {
         if (!data?.events) return;
-        if (!seasonSet && data.season?.year) {
-          const yr = data.season.year;
-          document.getElementById('season-label').textContent = `Serie A ${yr-1}/${String(yr).slice(2)}`;
+        if (!seasonSet && seasonText(data)) {
+          document.getElementById('season-label').textContent = `Serie A ${seasonText(data)}`;
           seasonSet = true;
         }
         data.events.forEach(ev => {
