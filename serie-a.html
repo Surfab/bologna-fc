@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bologna FC · Serie A</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+
+    header {
+      background: linear-gradient(135deg, #1a0a00 0%, #8B1A1A 50%, #c8102e 100%);
+      padding: 18px 24px; display: flex; align-items: center;
+      justify-content: space-between; box-shadow: 0 2px 16px rgba(139,26,26,0.5);
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .badge { width: 52px; height: 52px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .badge img { width: 44px; height: 44px; object-fit: contain; }
+    .badge-fallback { font-size: 26px; }
+    header h1 { font-size: 1.35rem; font-weight: 700; }
+    header p { font-size: 0.78rem; opacity: 0.75; margin-top: 2px; }
+    .refresh-info { text-align: right; font-size: 0.78rem; opacity: 0.85; }
+    #countdown { font-size: 1.1rem; font-weight: 700; color: #ffd700; }
+    .refresh-btn { margin-top: 6px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 5px 14px; border-radius: 20px; cursor: pointer; font-size: 0.78rem; transition: background 0.2s; }
+    .refresh-btn:hover { background: rgba(255,255,255,0.28); }
+
+    main { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
+    .meta-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 0.78rem; color: #8b949e; }
+
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab { padding: 7px 18px; border-radius: 20px; border: 1px solid #30363d; background: transparent; color: #8b949e; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+    .tab.active, .tab:hover { background: #8B1A1A; border-color: #c8102e; color: white; }
+
+    .day-group { margin-bottom: 28px; }
+    .day-header { font-size: 0.78rem; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.8px; padding: 5px 0; border-bottom: 1px solid #21262d; margin-bottom: 10px; }
+
+    .match-card { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr 140px 1fr; align-items: center; gap: 12px; transition: border-color 0.2s; position: relative; overflow: hidden; }
+    .match-card:hover { border-color: #c8102e; }
+    .match-card.live { border-color: #3fb950; }
+    .match-card.live::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #3fb950; }
+    .match-card.bologna-home { border-left: 3px solid #c8102e; }
+
+    .team { display: flex; align-items: center; gap: 10px; }
+    .team.away { flex-direction: row-reverse; text-align: right; }
+    .team-logo { width: 32px; height: 32px; object-fit: contain; }
+    .team-name { font-size: 0.9rem; font-weight: 600; color: #e6edf3; }
+    .team-name.bologna { color: #ffd700; }
+
+    .score-block { text-align: center; }
+    .score { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; }
+    .match-status { font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .status-live { color: #3fb950; }
+    .status-scheduled { color: #8b949e; }
+    .status-finished { color: #58a6ff; }
+    .match-meta { font-size: 0.7rem; color: #8b949e; margin-top: 3px; }
+    .competition-badge { display: inline-block; background: #21262d; color: #8b949e; font-size: 0.65rem; padding: 2px 7px; border-radius: 10px; margin-top: 3px; }
+    .competition-badge.cup { background: rgba(255,215,0,0.12); color: #ffd700; }
+
+    .live-dot { display: inline-block; width: 7px; height: 7px; background: #3fb950; border-radius: 50%; margin-right: 4px; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
+
+    #status-bar { text-align: center; padding: 10px; font-size: 0.82rem; color: #8b949e; min-height: 24px; }
+    #status-bar.error { color: #f85149; }
+    #status-bar.loading { color: #ffd700; }
+
+    .empty { text-align: center; padding: 48px; color: #8b949e; }
+    .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+
+    .skeleton { background: linear-gradient(90deg, #161b22 25%, #21262d 50%, #161b22 75%); background-size: 400% 100%; animation: shimmer 1.4s ease-in-out infinite; border-radius: 10px; height: 68px; margin-bottom: 8px; }
+    @keyframes shimmer { 0%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+    @media(max-width:600px){ .match-card{grid-template-columns:1fr 80px 1fr;padding:12px} .team-name{font-size:.78rem} .score{font-size:1.1rem} }
+
+    .site-nav { background: #161b22; border-bottom: 1px solid #21262d; display: flex; justify-content: center; gap: 4px; padding: 0 16px; }
+    .site-nav a { color: #8b949e; text-decoration: none; font-size: 0.9rem; font-weight: 600; padding: 12px 18px; border-bottom: 3px solid transparent; transition: color 0.2s, border-color 0.2s; }
+    .site-nav a:hover { color: #e6edf3; }
+    .site-nav a.active { color: #ffd700; border-bottom-color: #c8102e; }
+    .months { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+    .month { flex-shrink: 0; padding: 6px 13px; border-radius: 16px; border: 1px solid #30363d; background: transparent; color: #8b949e; cursor: pointer; font-size: 0.8rem; text-transform: capitalize; transition: all 0.2s; }
+    .month:hover { color: #e6edf3; border-color: #8b949e; }
+    .month.active { background: #e6edf3; border-color: #e6edf3; color: #0d1117; font-weight: 600; }
+    .month.now::after { content: ' •'; color: #c8102e; }
+    .match-card.has-bfc { background: linear-gradient(90deg, rgba(200,16,46,0.16), #161b22 70%); border-color: #8B1A1A; border-left: 3px solid #ffd700; }
+    .day-header.today { color: #ffd700; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="badge"><img src="https://a.espncdn.com/i/teamlogos/soccer/500/107.png" alt="Bologna" onerror="this.replaceWith(document.createTextNode('⚽'))"></div>
+    <div>
+      <h1>Bologna FC 1909</h1>
+      <p id="season-label">Tutte le partite di Serie A</p>
+    </div>
+  </div>
+  <div class="refresh-info">
+    <div>Prossimo aggiornamento: <span id="countdown">60s</span></div>
+    <button class="refresh-btn" onclick="loadMonth(true)">↻ Aggiorna ora</button>
+  </div>
+</header>
+
+<nav class="site-nav">
+  <a href="index.html">Partite</a>
+  <a href="serie-a.html" class="active">Serie A</a>
+  <a href="classifica.html">Classifica</a>
+</nav>
+
+<main>
+  <div class="meta-bar">
+    <span id="last-update">—</span>
+    <span id="match-count"></span>
+  </div>
+  <div class="months" id="months"></div>
+  <div class="tabs">
+    <button class="tab active" onclick="filterMatches('ALL',this)">Tutte</button>
+    <button class="tab" onclick="filterMatches('LIVE',this)">🔴 Live</button>
+    <button class="tab" onclick="filterMatches('FUTURE',this)">Prossime</button>
+    <button class="tab" onclick="filterMatches('PAST',this)">Risultati</button>
+    <button class="tab" onclick="filterMatches('BFC',this)">Solo Bologna</button>
+  </div>
+  <div id="matches-container">
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+  </div>
+  <div id="status-bar" class="loading">Caricamento partite di Serie A...</div>
+</main>
+
+<script>
+  // Tutte le partite di Serie A, un mese alla volta. Le partite del Bologna sono evidenziate.
+  const API = 'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard';
+  const REFRESH_S = 60;
+  const OLD_MONTH_TTL = 30 * 60 * 1000;
+  const isBolognaTeam = t => [t?.name, t?.displayName, t?.shortDisplayName].some(n => (n || '').toLowerCase().includes('bologna'));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const ym = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+  const cache = new Map(); // yyyymm -> { at, events, lastOk }
+  let months = [];
+  let selected = '';
+  let activeFilter = 'ALL';
+  let countdownVal = REFRESH_S;
+  let loading = false;
+  let scrolledToToday = false;
+
+  // Stagione da agosto a maggio (a giugno e luglio resta quella appena finita)
+  function seasonMonths() {
+    const now = new Date();
+    const startYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+    const out = [];
+    for (let i = 0; i < 10; i++) out.push(ym(new Date(startYear, 7 + i, 1)));
+    return out;
+  }
+
+  function monthLabel(m) {
+    const d = new Date(+m.slice(0, 4), +m.slice(4) - 1, 1);
+    return d.toLocaleDateString('it-IT', { month: 'short' }).replace('.', '') + ' ' + String(d.getFullYear()).slice(2);
+  }
+
+  function renderMonths() {
+    const now = ym(new Date());
+    document.getElementById('months').innerHTML = months.map(m =>
+      `<button class="month ${m === selected ? 'active' : ''} ${m === now ? 'now' : ''}" onclick="selectMonth('${m}')">${monthLabel(m)}</button>`
+    ).join('');
+    document.querySelector('.month.active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+
+  function selectMonth(m) {
+    selected = m;
+    scrolledToToday = false;
+    renderMonths();
+    loadMonth(false);
+  }
+
+  async function loadMonth(force) {
+    if (loading) return;
+    const month = selected;
+    const hit = cache.get(month);
+    const isCurrent = month === ym(new Date());
+    if (hit && !force && !isCurrent && Date.now() - hit.at < OLD_MONTH_TTL) { render(); return; }
+
+    loading = true;
+    document.getElementById('countdown').textContent = '…';
+    if (!hit) { showSkeleton(); setStatus('Caricamento partite di Serie A...', 'loading'); }
+
+    try {
+      const r = await fetch(`${API}?dates=${month}&limit=200`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const s = data?.leagues?.[0]?.season?.displayName?.match(/(\d{4})-(\d{2})/);
+      if (s) document.getElementById('season-label').textContent = `Tutte le partite di Serie A ${s[1]}/${s[2]}`;
+      const events = (data.events || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+      cache.set(month, { at: Date.now(), events, lastOk: new Date() });
+      setStatus('', '');
+    } catch (e) {
+      console.error(e);
+      if (hit) setStatus(`⚠️ Connessione assente. Dati delle ${hit.lastOk.toLocaleTimeString('it-IT')}, riprovo tra ${REFRESH_S}s.`, 'error');
+      else {
+        setStatus('', '');
+        document.getElementById('matches-container').innerHTML =
+          `<div class="empty"><div class="empty-icon">📡</div><p>Impossibile caricare i dati.<br><small style="color:#8b949e">Controlla la connessione internet, riprovo tra ${REFRESH_S}s.</small></p></div>`;
+        document.getElementById('match-count').textContent = '';
+      }
+    } finally {
+      loading = false;
+      resetCountdown();
+    }
+    if (month === selected && cache.has(month)) render();
+    else if (month !== selected) loadMonth(false); // l'utente ha cambiato mese durante il caricamento
+  }
+
+  function getEventStatus(event) {
+    const s = event.status?.type?.state;
+    if (s === 'in') return 'LIVE';
+    if (s === 'post') return 'PAST';
+    return 'FUTURE';
+  }
+
+  const competitorsOf = ev => ev.competitions?.[0]?.competitors || [];
+  const hasBologna = ev => competitorsOf(ev).some(c => isBolognaTeam(c.team));
+
+  function render() {
+    const entry = cache.get(selected);
+    if (!entry) return;
+    const all = entry.events;
+    document.getElementById('last-update').textContent = 'Aggiornato: ' + entry.lastOk.toLocaleTimeString('it-IT');
+    const live = all.filter(e => getEventStatus(e) === 'LIVE').length;
+    document.getElementById('match-count').textContent =
+      `${all.length} partite${live ? ` · ${live} in corso` : ''}`;
+
+    let list = all;
+    if (activeFilter === 'LIVE') list = all.filter(e => getEventStatus(e) === 'LIVE');
+    else if (activeFilter === 'FUTURE') list = all.filter(e => getEventStatus(e) === 'FUTURE');
+    else if (activeFilter === 'PAST') list = all.filter(e => getEventStatus(e) === 'PAST').reverse();
+    else if (activeFilter === 'BFC') list = all.filter(hasBologna);
+
+    const container = document.getElementById('matches-container');
+    if (!list.length) {
+      const msg = all.length ? 'Nessuna partita in questa categoria.' : 'Nessuna partita di Serie A in questo mese.';
+      container.innerHTML = `<div class="empty"><div class="empty-icon">⚽</div><p>${msg}</p></div>`;
+      return;
+    }
+
+    const todayKey = new Date().toDateString();
+    const groups = new Map();
+    list.forEach(e => {
+      const d = new Date(e.date);
+      const key = d.toDateString();
+      if (!groups.has(key)) groups.set(key, { d, items: [] });
+      groups.get(key).items.push(e);
+    });
+
+    let html = '';
+    for (const [key, { d, items }] of groups) {
+      const label = d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+      html += `<div class="day-group" data-day="${d.getTime()}"><div class="day-header ${key === todayKey ? 'today' : ''}">${key === todayKey ? 'Oggi · ' : ''}${label}</div>`;
+      items.forEach(m => { html += buildCard(m); });
+      html += '</div>';
+    }
+    container.innerHTML = html;
+
+    // Al primo caricamento del mese in corso, porta la vista a oggi o alla prossima giornata
+    if (!scrolledToToday && activeFilter === 'ALL' && selected === ym(new Date())) {
+      scrolledToToday = true;
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const target = [...container.querySelectorAll('.day-group')].find(g => +g.dataset.day >= start.getTime());
+      if (target && target !== container.firstElementChild) target.scrollIntoView({ block: 'start' });
+    }
+  }
+
+  function buildCard(event) {
+    const competitors = competitorsOf(event);
+    const home = competitors.find(c => c.homeAway === 'home') || competitors[0];
+    const away = competitors.find(c => c.homeAway === 'away') || competitors[1];
+    if (!home || !away) return '';
+
+    const status = getEventStatus(event);
+    const isLive = status === 'LIVE', isPast = status === 'PAST';
+    const bolHome = isBolognaTeam(home.team), bolAway = isBolognaTeam(away.team);
+    const name = c => esc(c.team?.shortDisplayName || c.team?.displayName || '—');
+    const img = c => c.team?.logo ? `<img src="${esc(c.team.logo)}" class="team-logo" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+
+    const scoreHtml = (isLive || isPast)
+      ? `<div class="score">${esc(home.score ?? '–')} – ${esc(away.score ?? '–')}</div>`
+      : `<div class="score" style="font-size:1rem;color:#8b949e;">${new Date(event.date).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</div>`;
+
+    let statusHtml;
+    if (isLive) statusHtml = `<div class="match-status status-live"><span class="live-dot"></span>${esc(event.status?.displayClock || 'Live')}</div>`;
+    else if (isPast) statusHtml = `<div class="match-status status-finished">Finita</div>`;
+    else if (event.status?.type?.name === 'STATUS_POSTPONED') statusHtml = `<div class="match-status status-scheduled">Rinviata</div>`;
+    else statusHtml = `<div class="match-status status-scheduled">Programmata</div>`;
+
+    return `
+      <div class="match-card ${isLive ? 'live' : ''} ${bolHome || bolAway ? 'has-bfc' : ''}">
+        <div class="team home">${img(home)}<span class="team-name ${bolHome ? 'bologna' : ''}">${name(home)}</span></div>
+        <div class="score-block">${scoreHtml}${statusHtml}</div>
+        <div class="team away"><span class="team-name ${bolAway ? 'bologna' : ''}">${name(away)}</span>${img(away)}</div>
+      </div>`;
+  }
+
+  function filterMatches(f, btn) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = f;
+    render();
+  }
+
+  function showSkeleton() {
+    document.getElementById('matches-container').innerHTML =
+      '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+  }
+
+  function resetCountdown() { countdownVal = REFRESH_S; document.getElementById('countdown').textContent = REFRESH_S + 's'; }
+  function setStatus(msg, type) { const el = document.getElementById('status-bar'); el.textContent = msg; el.className = type; }
+
+  setInterval(() => {
+    if (loading) return;
+    countdownVal--;
+    document.getElementById('countdown').textContent = countdownVal + 's';
+    if (countdownVal <= 0) loadMonth(true);
+  }, 1000);
+
+  months = seasonMonths();
+  const nowYm = ym(new Date());
+  selected = months.includes(nowYm) ? nowYm : (nowYm < months[0] ? months[0] : months[months.length - 1]);
+  renderMonths();
+  loadMonth(false);
+</script>
+</body>
+</html>

@@ -54,6 +54,7 @@
     .status-finished { color: #58a6ff; }
     .match-meta { font-size: 0.7rem; color: #8b949e; margin-top: 3px; }
     .competition-badge { display: inline-block; background: #21262d; color: #8b949e; font-size: 0.65rem; padding: 2px 7px; border-radius: 10px; margin-top: 3px; }
+    .competition-badge.cup { background: rgba(255,215,0,0.12); color: #ffd700; }
 
     .live-dot { display: inline-block; width: 7px; height: 7px; background: #3fb950; border-radius: 50%; margin-right: 4px; animation: pulse 1.5s infinite; }
     @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
@@ -97,6 +98,7 @@
 
 <nav class="site-nav">
   <a href="index.html" class="active">Partite</a>
+  <a href="serie-a.html">Serie A</a>
   <a href="classifica.html">Classifica</a>
 </nav>
 
@@ -114,19 +116,32 @@
   <div id="matches-container">
     <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
   </div>
-  <div id="status-bar" class="loading">Ricerca Bologna FC su ESPN...</div>
+  <div id="status-bar" class="loading">Caricamento partite Bologna...</div>
 </main>
 
 <script>
-  // ESPN: Serie A = ita.1
-  // Usiamo solo l'endpoint scoreboard (CORS ok da file://) filtrando per Bologna
-  const LEAGUE = 'ita.1';
-  const BOLOGNA_NAMES = ['bologna'];
+  // ESPN: partite del Bologna in tutte le competizioni che può giocare.
+  // Se una competizione non ha dati (o lo slug non esiste) viene ignorata.
+  const API = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
+  const COMPETITIONS = [
+    { slug: 'ita.1',            label: 'Serie A' },
+    { slug: 'ita.coppa_italia', label: 'Coppa Italia' },
+    { slug: 'uefa.champions',   label: 'Champions League' },
+    { slug: 'uefa.europa',      label: 'Europa League' },
+    { slug: 'uefa.europa.conf', label: 'Conference League' },
+  ];
+  const REFRESH_S = 60;
+  const OLD_MONTH_TTL = 30 * 60 * 1000; // i mesi diversi da quello in corso si riscaricano ogni 30 minuti
+  const isBolognaTeam = t => [t?.name, t?.displayName, t?.shortDisplayName].some(n => (n || '').toLowerCase().includes('bologna'));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
   let allEvents = [];
   let activeFilter = 'ALL';
-  let countdownVal = 60;
-  let countdownTimer = null;
+  let countdownVal = REFRESH_S;
+  let loading = false;
   let logoSet = false;
+  let lastOk = null;
+  const cache = new Map(); // "slug|yyyymm" -> { at, data }
 
   // Etichetta stagione dai dati ESPN, es. "2026-27 Italian Serie A" -> "2026/27"
   function seasonText(data) {
@@ -137,19 +152,12 @@
     return '';
   }
 
-  function isBolognaMatch(event) {
-    const competitors = event.competitions?.[0]?.competitors || [];
-    return competitors.some(c =>
-      BOLOGNA_NAMES.some(b => (c.team?.name || c.team?.displayName || '').toLowerCase().includes(b))
-    );
-  }
+  const competitorsOf = ev => ev.competitions?.[0]?.competitors || [];
+  const isBolognaMatch = ev => competitorsOf(ev).some(c => isBolognaTeam(c.team));
 
   function trySetLogo(event) {
     if (logoSet) return;
-    const competitors = event.competitions?.[0]?.competitors || [];
-    const bol = competitors.find(c =>
-      BOLOGNA_NAMES.some(b => (c.team?.name || '').toLowerCase().includes(b))
-    );
+    const bol = competitorsOf(event).find(c => isBolognaTeam(c.team));
     const logo = bol?.team?.logo || bol?.team?.logos?.[0]?.href;
     if (logo) {
       const img = document.getElementById('club-logo');
@@ -160,14 +168,23 @@
     }
   }
 
-  async function fetchMonth(yyyymm) {
+  // Restituisce { data, ok, fromCache }. ok=false solo per errori di rete o del server, non per "nessun dato".
+  async function fetchBoard(slug, yyyymm, isCurrent) {
+    const key = `${slug}|${yyyymm}`;
+    const hit = cache.get(key);
+    if (hit && !isCurrent && Date.now() - hit.at < OLD_MONTH_TTL) return { data: hit.data, ok: true, fromCache: true };
     try {
-      const r = await fetch(
-        `https://site.api.espn.com/apis/site/v2/sports/soccer/${LEAGUE}/scoreboard?dates=${yyyymm}&limit=200`
-      );
-      if (r.ok) return r.json();
-    } catch(e) {}
-    return null;
+      const r = await fetch(`${API}/${slug}/scoreboard?dates=${yyyymm}&limit=200`);
+      if (r.ok) {
+        const data = await r.json();
+        cache.set(key, { at: Date.now(), data });
+        return { data, ok: true };
+      }
+      // 400/404: competizione non disponibile su ESPN, non è un problema di rete
+      return { data: hit?.data || null, ok: r.status < 500 };
+    } catch (e) {
+      return { data: hit?.data || null, ok: false };
+    }
   }
 
   function getMonthsToFetch() {
@@ -175,60 +192,71 @@
     const now = new Date();
     for (let offset = -2; offset <= 6; offset++) {
       const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      months.push(`${d.getFullYear()}${mm}`);
+      months.push(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
     return months;
   }
 
   async function loadMatches() {
-    setStatus('Caricamento partite Bologna...', 'loading');
-    showSkeleton();
+    if (loading) return;           // evita ricaricamenti sovrapposti
+    loading = true;
+    document.getElementById('countdown').textContent = '…';
+    const firstLoad = !lastOk;
+    if (firstLoad) showSkeleton();  // ai refresh automatici la lista resta al suo posto
+    setStatus(firstLoad ? 'Caricamento partite Bologna...' : '', firstLoad ? 'loading' : '');
 
     try {
       const months = getMonthsToFetch();
-      // Fetch all months in parallel
-      const results = await Promise.all(months.map(m => fetchMonth(m)));
+      const current = months[2];
+      const jobs = [];
+      COMPETITIONS.forEach(c => months.forEach(m =>
+        jobs.push(fetchBoard(c.slug, m, m === current).then(res => ({ ...res, comp: c })))));
+      const results = await Promise.all(jobs);
+
+      const serieA = results.filter(r => r.comp.slug === 'ita.1');
+      if (serieA.every(r => !r.data)) throw new Error('offline');
+      const partial = results.some(r => !r.ok);
+      const network = results.filter(r => !r.fromCache);
+      const offline = network.length > 0 && network.every(r => !r.ok);
 
       const eventsMap = new Map();
-      let seasonSet = false;
-
-      results.forEach(data => {
+      results.forEach(({ data, comp }) => {
         if (!data?.events) return;
-        if (!seasonSet && seasonText(data)) {
+        if (comp.slug === 'ita.1' && seasonText(data)) {
           document.getElementById('season-label').textContent = `Serie A ${seasonText(data)}`;
-          seasonSet = true;
         }
         data.events.forEach(ev => {
-          if (isBolognaMatch(ev)) {
-            eventsMap.set(ev.id, ev);
-            trySetLogo(ev);
-          }
+          if (!isBolognaMatch(ev)) return;
+          eventsMap.set(ev.id, { ...ev, _comp: comp.label });
+          trySetLogo(ev);
         });
       });
 
-      allEvents = Array.from(eventsMap.values());
-      allEvents.sort((a,b) => new Date(a.date) - new Date(b.date));
-
+      allEvents = Array.from(eventsMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
       renderMatches(activeFilter);
 
-      document.getElementById('last-update').textContent =
-        'Aggiornato: ' + new Date().toLocaleTimeString('it-IT');
-      document.getElementById('match-count').textContent =
-        allEvents.length + ' partite';
+      if (!offline) lastOk = new Date();
+      document.getElementById('last-update').textContent = 'Aggiornato: ' + lastOk.toLocaleTimeString('it-IT');
+      document.getElementById('match-count').textContent = allEvents.length + ' partite';
 
-      if (allEvents.length === 0) {
-        setStatus('Nessuna partita trovata per Bologna FC', 'error');
+      if (allEvents.length === 0) setStatus('Nessuna partita trovata per Bologna FC', 'error');
+      else if (offline) setStatus(`⚠️ Connessione assente. Dati delle ${lastOk.toLocaleTimeString('it-IT')}, riprovo tra ${REFRESH_S}s.`, 'error');
+      else if (partial) setStatus('⚠️ Alcuni dati non sono stati aggiornati: riprovo al prossimo giro.', 'error');
+      else setStatus('', '');
+
+    } catch (e) {
+      console.error(e);
+      if (lastOk) {
+        // Teniamo le partite già mostrate invece di svuotare la pagina
+        setStatus(`⚠️ Connessione assente. Dati delle ${lastOk.toLocaleTimeString('it-IT')}, riprovo tra ${REFRESH_S}s.`, 'error');
       } else {
         setStatus('', '');
+        document.getElementById('matches-container').innerHTML =
+          `<div class="empty"><div class="empty-icon">📡</div><p>Impossibile caricare i dati.<br><small style="color:#8b949e">Controlla la connessione internet, riprovo tra ${REFRESH_S}s.</small></p></div>`;
       }
+    } finally {
+      loading = false;
       resetCountdown();
-
-    } catch(e) {
-      console.error(e);
-      setStatus('⚠️ ' + e.message, 'error');
-      document.getElementById('matches-container').innerHTML =
-        `<div class="empty"><div class="empty-icon">📡</div><p>Impossibile caricare i dati.<br><small style="color:#8b949e">Controlla la connessione internet.</small></p></div>`;
     }
   }
 
@@ -239,27 +267,15 @@
     return 'FUTURE';
   }
 
-  function isBolognaHome(event) {
-    const comp = event.competitions?.[0];
-    if (!comp) return false;
-    const home = comp.competitors?.find(c => c.homeAway === 'home');
-    return BOLOGNA_NAMES.some(b => (home?.team?.name || '').toLowerCase().includes(b));
-  }
-
   function renderMatches(filter) {
     activeFilter = filter;
     const container = document.getElementById('matches-container');
-    let list = allEvents;
-
-    if (filter === 'LIVE') list = allEvents.filter(e => getEventStatus(e) === 'LIVE');
-    else if (filter === 'FUTURE') list = allEvents.filter(e => getEventStatus(e) === 'FUTURE');
-    else if (filter === 'PAST') list = allEvents.filter(e => getEventStatus(e) === 'PAST').reverse();
-    else {
-      const live   = allEvents.filter(e => getEventStatus(e) === 'LIVE');
-      const future = allEvents.filter(e => getEventStatus(e) === 'FUTURE');
-      const past   = allEvents.filter(e => getEventStatus(e) === 'PAST').reverse();
-      list = [...live, ...future, ...past];
-    }
+    const by = st => allEvents.filter(e => getEventStatus(e) === st);
+    let list;
+    if (filter === 'LIVE') list = by('LIVE');
+    else if (filter === 'FUTURE') list = by('FUTURE');
+    else if (filter === 'PAST') list = by('PAST').reverse();
+    else list = [...by('LIVE'), ...by('FUTURE'), ...by('PAST').reverse()];
 
     if (!list.length) {
       container.innerHTML = '<div class="empty"><div class="empty-icon">⚽</div><p>Nessuna partita in questa categoria.</p></div>';
@@ -268,10 +284,8 @@
 
     const groups = {};
     list.forEach(e => {
-      const d = new Date(e.date);
-      const key = d.toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(e);
+      const key = new Date(e.date).toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+      (groups[key] ||= []).push(e);
     });
 
     let html = '';
@@ -284,9 +298,7 @@
   }
 
   function buildCard(event) {
-    const comp = event.competitions?.[0];
-    if (!comp) return '';
-    const competitors = comp.competitors || [];
+    const competitors = competitorsOf(event);
     const home = competitors.find(c => c.homeAway === 'home') || competitors[0];
     const away = competitors.find(c => c.homeAway === 'away') || competitors[1];
     if (!home || !away) return '';
@@ -294,45 +306,32 @@
     const status = getEventStatus(event);
     const isLive = status === 'LIVE';
     const isPast = status === 'PAST';
-    const bolHome = BOLOGNA_NAMES.some(b => (home.team?.name || '').toLowerCase().includes(b));
-    const bolAway = BOLOGNA_NAMES.some(b => (away.team?.name || '').toLowerCase().includes(b));
+    const bolHome = isBolognaTeam(home.team);
+    const bolAway = isBolognaTeam(away.team);
 
-    const homeName = home.team?.shortDisplayName || home.team?.displayName || '—';
-    const awayName = away.team?.shortDisplayName || away.team?.displayName || '—';
-    const homeLogo = home.team?.logo || '';
-    const awayLogo = away.team?.logo || '';
-    const homeScore = home.score ?? '–';
-    const awayScore = away.score ?? '–';
+    const homeName = esc(home.team?.shortDisplayName || home.team?.displayName || '—');
+    const awayName = esc(away.team?.shortDisplayName || away.team?.displayName || '—');
+    const homeImg = home.team?.logo ? `<img src="${esc(home.team.logo)}" class="team-logo" alt="" onerror="this.style.display='none'">` : '';
+    const awayImg = away.team?.logo ? `<img src="${esc(away.team.logo)}" class="team-logo" alt="" onerror="this.style.display='none'">` : '';
 
-    const homeImg = homeLogo ? `<img src="${homeLogo}" class="team-logo" onerror="this.style.display='none'">` : '';
-    const awayImg = awayLogo ? `<img src="${awayLogo}" class="team-logo" onerror="this.style.display='none'">` : '';
-
-    let scoreHtml = '';
+    let scoreHtml;
     if (isLive || isPast) {
-      scoreHtml = `<div class="score">${homeScore} – ${awayScore}</div>`;
+      scoreHtml = `<div class="score">${esc(home.score ?? '–')} – ${esc(away.score ?? '–')}</div>`;
     } else {
-      const t = new Date(event.date).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      const t = new Date(event.date).toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
       scoreHtml = `<div class="score" style="font-size:1rem;color:#8b949e;">${t}</div>`;
     }
 
-    const clock = event.status?.displayClock;
-    let statusHtml = '';
-    if (isLive) {
-      statusHtml = `<div class="match-status status-live"><span class="live-dot"></span>${clock || 'Live'}</div>`;
-    } else if (isPast) {
-      statusHtml = `<div class="match-status status-finished">Finita</div>`;
-    } else {
-      statusHtml = `<div class="match-status status-scheduled">Programmata</div>`;
-    }
+    let statusHtml;
+    if (isLive) statusHtml = `<div class="match-status status-live"><span class="live-dot"></span>${esc(event.status?.displayClock || 'Live')}</div>`;
+    else if (isPast) statusHtml = `<div class="match-status status-finished">Finita</div>`;
+    else statusHtml = `<div class="match-status status-scheduled">Programmata</div>`;
 
-    // Competition name
-    const compName = event.competitions?.[0]?.series?.title || event.name?.split(' - ')[0] || '';
-    const compBadge = compName ? `<div class="competition-badge">${compName}</div>` : '';
-
-    const cardClass = `match-card ${isLive ? 'live' : ''} ${bolHome ? 'bologna-home' : ''}`;
+    // Badge solo per le coppe: in campionato sarebbe ripetitivo
+    const compBadge = event._comp && event._comp !== 'Serie A' ? `<div class="competition-badge cup">${esc(event._comp)}</div>` : '';
 
     return `
-      <div class="${cardClass}">
+      <div class="match-card ${isLive ? 'live' : ''} ${bolHome ? 'bologna-home' : ''}">
         <div class="team home">
           ${homeImg}
           <span class="team-name ${bolHome ? 'bologna' : ''}">${homeName}</span>
@@ -361,16 +360,15 @@
   }
 
   function startCountdown() {
-    clearInterval(countdownTimer);
-    countdownVal = 60;
-    countdownTimer = setInterval(() => {
+    setInterval(() => {
+      if (loading) return;         // il conto alla rovescia si ferma durante il caricamento
       countdownVal--;
       document.getElementById('countdown').textContent = countdownVal + 's';
       if (countdownVal <= 0) loadMatches();
     }, 1000);
   }
 
-  function resetCountdown() { countdownVal = 60; document.getElementById('countdown').textContent = '60s'; }
+  function resetCountdown() { countdownVal = REFRESH_S; document.getElementById('countdown').textContent = REFRESH_S + 's'; }
   function setStatus(msg, type) { const el = document.getElementById('status-bar'); el.textContent = msg; el.className = type; }
 
   loadMatches();
