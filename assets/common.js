@@ -161,17 +161,19 @@
 
   // Aggiornamento automatico con conto alla rovescia (se in pagina c'è #countdown).
   // Il conto si ferma durante il caricamento, così non partono ricaricamenti sovrapposti.
+  // seconds può essere una funzione: l'intervallo viene ricalcolato dopo ogni caricamento.
   // Restituisce la funzione da chiamare per caricare subito (anche dal pulsante "Aggiorna").
-  function autoRefresh(seconds, load) {
+  function autoRefresh(every, load) {
     const el = document.getElementById('countdown');
-    let left = seconds, busy = false;
+    const interval = () => typeof every === 'function' ? every() : every;
+    let seconds = interval(), left = seconds, busy = false;
     const show = t => { if (el) el.textContent = t; };
     async function run(...args) {
       if (busy) return;
       busy = true; show('…');
       try { await load(...args); }
       catch (e) { console.error(e); }
-      finally { busy = false; left = seconds; show(seconds + 's'); }
+      finally { busy = false; seconds = interval(); left = seconds; show(seconds + 's'); }
     }
     setInterval(() => {
       if (busy) return;

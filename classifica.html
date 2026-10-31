@@ -57,6 +57,22 @@
     .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 0.78rem; color: #8b949e; }
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
     .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    /* Classifica live */
+    .live-bar { display: none; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: rgba(63,185,80,0.10); border: 1px solid rgba(63,185,80,0.45); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.82rem; }
+    .live-bar.on { display: flex; }
+    .live-bar .msg { color: #3fb950; font-weight: 600; }
+    .live-bar .msg small { display: block; color: #8b949e; font-weight: 400; margin-top: 2px; }
+    .seg { display: inline-flex; border: 1px solid #30363d; border-radius: 18px; overflow: hidden; }
+    .seg button { background: transparent; border: 0; color: #8b949e; padding: 6px 14px; font-size: 0.8rem; cursor: pointer; }
+    .seg button.active { background: #3fb950; color: #0d1117; font-weight: 700; }
+    .seg button.active.off { background: #e6edf3; }
+    .live-score { flex-shrink: 0; font-style: normal; font-size: 0.68rem; font-weight: 700; color: #3fb950; background: rgba(63,185,80,0.12); border-radius: 8px; padding: 1px 6px; }
+    .mv { display: block; font-size: 0.6rem; font-weight: 700; line-height: 1; margin-top: 2px; }
+    .mv.up { color: #3fb950; }
+    .mv.down { color: #f85149; }
+    .bfc-live { grid-column: 1 / -1; color: #3fb950; font-size: 0.85rem; font-weight: 600; }
+    .bfc-live small { color: #8b949e; font-weight: 400; }
+    .bfc-card.live { border-color: rgba(63,185,80,0.6); }
     .footnote { margin-top: 12px; font-size: 0.72rem; color: #6e7681; line-height: 1.5; }
 
     .skeleton { height: 38px; margin-bottom: 6px; }
@@ -95,6 +111,14 @@
     <span id="round-info"></span>
   </div>
 
+  <div class="live-bar" id="live-bar">
+    <div class="msg"><span class="live-dot"></span><span id="live-msg">Classifica live</span><small id="live-sub"></small></div>
+    <div class="seg" role="group" aria-label="Tipo di classifica">
+      <button id="btn-live" onclick="setMode('live')">Live</button>
+      <button id="btn-official" onclick="setMode('official')">Ufficiale</button>
+    </div>
+  </div>
+
   <div id="bfc-card"></div>
 
   <div id="table-container">
@@ -124,6 +148,12 @@
   const zoneOf = desc => ZONE_STYLE.find(z => (desc || '').toLowerCase().includes(z.key)) || null;
 
   let lastOk = null; // ora dell'ultima classifica caricata
+  // Ultimi dati caricati: classifica ufficiale, partite finite e partite in corso
+  let state = null;
+  // 'live' o 'official' scelto dall'utente; null = automatico (live se ci sono partite in corso)
+  let userMode = null;
+  const LIVE_REFRESH_S = 60, IDLE_REFRESH_S = 120;
+  const refreshEvery = () => state?.live.length ? LIVE_REFRESH_S : IDLE_REFRESH_S;
 
   // Mesi della stagione già iniziati (a giugno e luglio resta la stagione appena finita)
   const playedMonths = () => BFC.seasonMonths().filter(m => m <= BFC.ym(new Date()));
@@ -175,7 +205,7 @@
     const teams = new Map();
     const matches = [];
     const seen = new Set();
-    let liveCount = 0;
+    const live = [];
     let seasonName = '';
 
     boards.forEach(data => {
@@ -190,11 +220,12 @@
         if (!home?.team || !away?.team) return;
         [home, away].forEach(c => { if (!teams.has(c.team.id)) teams.set(c.team.id, newRow(c.team)); });
         const st = ev.status?.type || {};
-        if (st.state === 'in') liveCount++;
-        if (st.state !== 'post' || !st.completed) return;
         const hs = parseInt(home.score, 10), as = parseInt(away.score, 10);
         if (isNaN(hs) || isNaN(as)) return;
-        matches.push({ date: ev.date, homeId: home.team.id, awayId: away.team.id, hs, as });
+        const m = { date: ev.date, homeId: home.team.id, awayId: away.team.id, hs, as };
+        // Partita in corso: entra solo nella classifica live, con il risultato del momento
+        if (st.state === 'in') live.push({ ...m, clock: ev.status?.displayClock || '' });
+        else if (st.state === 'post' && st.completed) matches.push(m);
       });
     });
 
@@ -239,7 +270,8 @@
     if (!rows.length) {
       if (lastOk) {
         // Teniamo la classifica già mostrata invece di svuotare la pagina
-        setStatus(`⚠️ Connessione assente. Classifica delle ${lastOk.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}, riprovo tra 2 minuti.`, 'error');
+        const wait = refreshEvery();
+        setStatus(`⚠️ Connessione assente. Classifica delle ${lastOk.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}, riprovo tra ${wait === 60 ? '1 minuto' : '2 minuti'}.`, 'error');
       } else {
         setStatus('⚠️ Impossibile caricare la classifica. Controlla la connessione e riprova.', 'error');
         document.getElementById('table-container').innerHTML = '';
@@ -252,21 +284,81 @@
       const yr = seasonName.match(/(\d{4})-(\d{2})/);
       document.getElementById('season-label').textContent = yr ? `Classifica Serie A ${yr[1]}/${yr[2]}` : 'Classifica Serie A';
     }
-    const round = Math.max(...rows.map(r => r.gp));
-    document.getElementById('round-info').textContent = round ? `Dopo ${round} ${round === 1 ? 'giornata' : 'giornate'}` : 'Campionato non ancora iniziato';
     lastOk = new Date();
     document.getElementById('last-update').textContent = 'Aggiornato: ' + lastOk.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    state = { rows, matches, live, zoneMap, source, teams };
+    render();
+    setStatus('', '');
+  }
 
-    renderBologna(rows, zoneMap);
-    renderTable(rows, zoneMap);
+  // Classifica live: le partite in corso contano come se finissero adesso
+  function liveRows(official, matches, live) {
+    const rows = official.map(r => ({ ...r, results: r.results.slice(), live: null }));
+    const byId = new Map(rows.map(r => [r.id, r]));
+    // Partite finite per squadra: se la classifica ESPN ne conta di più per entrambe,
+    // la partita in corso è già nei suoi numeri e non va contata due volte
+    const done = new Map();
+    matches.forEach(m => [m.homeId, m.awayId].forEach(id => done.set(id, (done.get(id) || 0) + 1)));
+    live.forEach(m => {
+      const h = byId.get(m.homeId), a = byId.get(m.awayId);
+      if (!h || !a) return;
+      const res = (x, y) => x > y ? 'V' : x < y ? 'P' : 'N';
+      h.live = { score: `${m.hs}-${m.as}`, vs: a.name, home: true, clock: m.clock, res: res(m.hs, m.as), gain: m.hs > m.as ? 3 : m.hs === m.as ? 1 : 0 };
+      a.live = { score: `${m.hs}-${m.as}`, vs: h.name, home: false, clock: m.clock, res: res(m.as, m.hs), gain: m.as > m.hs ? 3 : m.hs === m.as ? 1 : 0 };
+      if (h.gp > (done.get(h.id) || 0) && a.gp > (done.get(a.id) || 0)) return;
+      h.gp++; a.gp++; h.gf += m.hs; h.ga += m.as; a.gf += m.as; a.ga += m.hs;
+      if (m.hs > m.as) { h.w++; h.pts += 3; a.l++; }
+      else if (m.hs < m.as) { a.w++; a.pts += 3; h.l++; }
+      else { h.d++; a.d++; h.pts++; a.pts++; }
+    });
+    // Stesso criterio della classifica calcolata, con le partite in corso tra quelle giocate
+    return sortRows(rows, [...matches, ...live]);
+  }
+
+  function setMode(m) { userMode = m; render(); }
+
+  function render() {
+    if (!state) return;
+    const { rows: official, matches, live, zoneMap, source } = state;
+    const hasLive = live.length > 0;
+    const isLive = hasLive && userMode !== 'official';
+    const rows = isLive ? liveRows(official, matches, live) : official;
+    const officialPos = new Map(official.map((r, i) => [r.id, i + 1]));
+
+    // Barra live: visibile solo quando ci sono partite in corso
+    document.getElementById('live-bar').classList.toggle('on', hasLive);
+    if (hasLive) {
+      const n = live.length;
+      document.getElementById('live-msg').textContent = isLive ? 'Classifica live, risultati provvisori' : 'Classifica ufficiale';
+      document.getElementById('live-sub').textContent = isLive
+        ? `${n === 1 ? '1 partita in corso conta come se finisse' : `${n} partite in corso contano come se finissero`} ora. Aggiornamento ogni minuto.`
+        : `${n} ${n === 1 ? 'partita in corso non è' : 'partite in corso non sono'} ancora ${n === 1 ? 'conteggiata' : 'conteggiate'}.`;
+      document.getElementById('btn-live').className = isLive ? 'active' : '';
+      document.getElementById('btn-official').className = isLive ? '' : 'active off';
+    }
+
+    const round = Math.max(...official.map(r => r.gp));
+    document.getElementById('round-info').textContent = round
+      ? `Dopo ${round} ${round === 1 ? 'giornata' : 'giornate'}${isLive ? ' + partite in corso' : ''}`
+      : (isLive ? 'Prima giornata in corso' : 'Campionato non ancora iniziato');
+
+    renderBologna(rows, zoneMap, isLive ? officialPos : null);
+    renderTable(rows, zoneMap, isLive ? officialPos : null);
     renderLegend(zoneMap);
 
-    document.getElementById('footnote').textContent =
-      (source === 'calcolata'
-        ? 'Classifica calcolata dai risultati ufficiali ESPN. A pari punti contano gli scontri diretti, poi la differenza reti e i gol fatti.'
-        : 'Classifica ufficiale ESPN.')
-      + (liveCount ? ` Ci sono ${liveCount} partite in corso: il risultato entra in classifica a fine gara.` : '');
-    setStatus('', '');
+    document.getElementById('footnote').textContent = isLive
+      ? 'Classifica live: non è ufficiale. Le partite in corso contano con il risultato del momento; le frecce indicano i posti guadagnati o persi rispetto alla classifica ufficiale. A pari punti contano gli scontri diretti, poi la differenza reti e i gol fatti.'
+      : (source === 'calcolata'
+          ? 'Classifica calcolata dai risultati ufficiali ESPN. A pari punti contano gli scontri diretti, poi la differenza reti e i gol fatti.'
+          : 'Classifica ufficiale ESPN.')
+        + (hasLive ? ` ${live.length === 1 ? 'C\'è 1 partita' : `Ci sono ${live.length} partite`} in corso: tocca "Live" per vederne l'effetto.` : '');
+  }
+
+  // Freccia dei posti guadagnati o persi rispetto alla classifica ufficiale
+  function moveHtml(id, pos, officialPos) {
+    if (!officialPos) return '';
+    const d = (officialPos.get(id) || pos) - pos;
+    return d > 0 ? `<span class="mv up">▲${d}</span>` : d < 0 ? `<span class="mv down">▼${-d}</span>` : '';
   }
 
   function formHtml(results) {
@@ -276,16 +368,17 @@
     return `<span class="form">${cells.join('')}</span>`;
   }
 
-  function renderTable(rows, zoneMap) {
+  function renderTable(rows, zoneMap, officialPos) {
     const body = rows.map((r, i) => {
       const pos = i + 1;
       const z = zoneOf(zoneMap[pos]);
       const bfc = isBologna(r.name);
       const gd = r.gf - r.ga;
       const logo = r.logo ? `<img src="${esc(r.logo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '';
+      const liveHtml = r.live ? `<em class="live-score" title="${esc(`${r.live.clock} contro ${r.live.vs}`)}">${esc(r.live.score)}</em>` : '';
       return `<tr class="${bfc ? 'is-bfc' : ''}">
-        <td class="pos" style="--zone:${z ? z.color : 'transparent'}">${pos}</td>
-        <td class="team"><div class="team-cell">${logo}<span>${esc(r.name)}</span></div></td>
+        <td class="pos" style="--zone:${z ? z.color : 'transparent'}">${pos}${moveHtml(r.id, pos, officialPos)}</td>
+        <td class="team"><div class="team-cell">${logo}<span>${esc(r.name)}</span>${liveHtml}</div></td>
         <td class="pts">${r.pts}</td>
         <td class="muted">${r.gp}</td>
         <td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
@@ -308,7 +401,7 @@
       </table></div>`;
   }
 
-  function renderBologna(rows, zoneMap) {
+  function renderBologna(rows, zoneMap, officialPos) {
     const idx = rows.findIndex(r => isBologna(r.name));
     const el = document.getElementById('bfc-card');
     if (idx < 0) { el.innerHTML = ''; return; }
@@ -337,9 +430,20 @@
       else chips.push(`In zona retrocessione, ${behind(rows[relFirst - 2].pts - b.pts, 'la salvezza')}`);
     }
 
+    // Partita in corso del Bologna (solo in modalità live)
+    let liveLine = '';
+    if (b.live) {
+      const [hs, as] = b.live.score.split('-');
+      const score = b.live.home ? `Bologna ${hs}-${as} ${esc(b.live.vs)}` : `${esc(b.live.vs)} ${hs}-${as} Bologna`;
+      const gain = b.live.gain === 3 ? '+3 provvisori' : b.live.gain === 1 ? '+1 provvisorio' : 'nessun punto per ora';
+      liveLine = `<div class="bfc-live"><span class="live-dot"></span>Live ${esc(b.live.clock)}: ${score} <small>· ${gain}</small></div>`;
+    }
+    const move = officialPos ? moveHtml(b.id, pos, officialPos) : '';
+
     el.innerHTML = `
-      <div class="bfc-card">
-        <div class="bfc-pos"><div class="num">${pos}°</div><div class="lbl">Posizione</div></div>
+      <div class="bfc-card ${b.live ? 'live' : ''}">
+        ${liveLine}
+        <div class="bfc-pos"><div class="num">${pos}°</div><div class="lbl">${officialPos ? 'Posizione live' : 'Posizione'}${move}</div></div>
         <div class="bfc-stats">
           <div class="bfc-stat"><div class="v">${b.pts}</div><div class="k">Punti</div></div>
           <div class="bfc-stat"><div class="v">${b.w}-${b.d}-${b.l}</div><div class="k">V-N-P</div></div>
@@ -357,7 +461,7 @@
       present.map(z => `<span><i style="background:${z.color}"></i>${z.label}</span>`).join('');
   }
 
-  const refresh = BFC.autoRefresh(120, loadStandings);
+  const refresh = BFC.autoRefresh(refreshEvery, loadStandings);
   refresh();
 </script>
 </body>
