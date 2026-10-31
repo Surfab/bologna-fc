@@ -114,6 +114,7 @@
 
 <nav class="site-nav">
   <a href="index.html">Partite</a>
+  <a href="serie-a.html">Serie A</a>
   <a href="classifica.html" class="active">Classifica</a>
 </nav>
 
@@ -150,6 +151,7 @@
   ];
   const zoneOf = desc => ZONE_STYLE.find(z => (desc || '').toLowerCase().includes(z.key)) || null;
 
+  let lastOk = null; // ora dell'ultima classifica caricata
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   async function fetchJSON(url) {
@@ -279,8 +281,14 @@
     }
 
     if (!rows.length) {
-      setStatus('⚠️ Impossibile caricare la classifica. Controlla la connessione e riprova.', 'error');
-      document.getElementById('table-container').innerHTML = '';
+      if (lastOk) {
+        // Teniamo la classifica già mostrata invece di svuotare la pagina
+        setStatus(`⚠️ Connessione assente. Classifica delle ${lastOk.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}, riprovo tra 2 minuti.`, 'error');
+      } else {
+        setStatus('⚠️ Impossibile caricare la classifica. Controlla la connessione e riprova.', 'error');
+        document.getElementById('table-container').innerHTML = '';
+        document.getElementById('last-update').textContent = 'Non aggiornato';
+      }
       return;
     }
 
@@ -290,7 +298,8 @@
     }
     const round = Math.max(...rows.map(r => r.gp));
     document.getElementById('round-info').textContent = round ? `Dopo ${round} ${round === 1 ? 'giornata' : 'giornate'}` : 'Campionato non ancora iniziato';
-    document.getElementById('last-update').textContent = 'Aggiornato: ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    lastOk = new Date();
+    document.getElementById('last-update').textContent = 'Aggiornato: ' + lastOk.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 
     renderBologna(rows, zoneMap);
     renderTable(rows, zoneMap);
