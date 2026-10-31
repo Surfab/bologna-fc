@@ -135,17 +135,19 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const ym = d => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-  // Nomi dei turni come li scrive ESPN (in inglese), tradotti quando li riconosciamo
+  // Nomi dei turni come li scrive ESPN (in inglese, anche con i trattini: "round-of-16"),
+  // tradotti quando li riconosciamo. Semifinali e quarti vanno controllati prima della finale.
   const ROUNDS = [
-    [/final$/i, 'Finale'], [/semi/i, 'Semifinale'], [/quarter/i, 'Quarti di finale'],
-    [/round of 16|eighth/i, 'Ottavi di finale'], [/round of 32/i, 'Sedicesimi di finale'],
-    [/round of 64|first round|preliminary/i, 'Turno preliminare'],
+    [/semi ?finals?/, 'Semifinale'], [/quarter ?finals?/, 'Quarti di finale'],
+    [/^finals?$/, 'Finale'], [/round of 16|eighth ?finals?/, 'Ottavi di finale'],
+    [/round of 32/, 'Sedicesimi di finale'], [/round of 64|first round|preliminary/, 'Turno preliminare'],
   ];
   const roundName = ev => {
     const raw = ev.competitions?.[0]?.notes?.[0]?.headline || ev.season?.slug || '';
-    if (!raw || /regular|season/i.test(raw)) return '';
-    const hit = ROUNDS.find(([re]) => re.test(raw));
-    return hit ? hit[1] : raw;
+    const norm = raw.toLowerCase().replace(/[-_]+/g, ' ').trim();
+    if (!norm || /regular|season/.test(norm)) return '';
+    const hit = ROUNDS.find(([re]) => re.test(norm));
+    return hit ? hit[1] : raw.replace(/[-_]+/g, ' ');
   };
 
   const cache = new Map(); // yyyymm -> { at, events }
