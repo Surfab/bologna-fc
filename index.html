@@ -75,6 +75,7 @@
     .site-nav a { color: #8b949e; text-decoration: none; font-size: 0.9rem; font-weight: 600; padding: 12px 18px; border-bottom: 3px solid transparent; transition: color 0.2s, border-color 0.2s; }
     .site-nav a:hover { color: #e6edf3; }
     .site-nav a.active { color: #ffd700; border-bottom-color: #c8102e; }
+    @media (max-width: 600px) { .site-nav { justify-content: safe center; overflow-x: auto; gap: 0; padding: 0 8px; } .site-nav a { padding: 11px 10px; font-size: 0.85rem; white-space: nowrap; } }
   </style>
 </head>
 <body>
@@ -100,6 +101,7 @@
   <a href="index.html" class="active">Partite</a>
   <a href="serie-a.html">Serie A</a>
   <a href="classifica.html">Classifica</a>
+  <a href="coppa-italia.html">Coppa Italia</a>
 </nav>
 
 <main>
@@ -120,15 +122,14 @@
 </main>
 
 <script>
-  // ESPN: partite del Bologna in tutte le competizioni che può giocare.
+  // ESPN: partite del Bologna in campionato e in Coppa Italia.
   // Se una competizione non ha dati (o lo slug non esiste) viene ignorata.
   const API = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
   const COMPETITIONS = [
     { slug: 'ita.1',            label: 'Serie A' },
     { slug: 'ita.coppa_italia', label: 'Coppa Italia' },
-    { slug: 'uefa.champions',   label: 'Champions League' },
-    { slug: 'uefa.europa',      label: 'Europa League' },
-    { slug: 'uefa.europa.conf', label: 'Conference League' },
+    // Stagione 2026/27: il Bologna non gioca coppe europee. Se si qualifica, aggiungere qui
+    // { slug: 'uefa.champions', label: 'Champions League' }, 'uefa.europa', 'uefa.europa.conf'
   ];
   const REFRESH_S = 60;
   const OLD_MONTH_TTL = 30 * 60 * 1000; // i mesi diversi da quello in corso si riscaricano ogni 30 minuti
