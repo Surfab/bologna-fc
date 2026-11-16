@@ -6,17 +6,32 @@ name: Notizie TuttoBolognaWeb
 on:
   schedule:
     - cron: '7,37 * * * *'   # minuti 7 e 37: lontano dall'ora piena, quando GitHub è più carico
+    - cron: '23 4 * * 1'     # lunedì mattina: riattivazione settimanale (vedi job keepalive)
   workflow_dispatch: {}       # per lanciarla a mano dalla scheda Actions
 
 permissions:
   contents: write
+  actions: write   # serve al job keepalive per riattivare l'azione
 
 concurrency:
   group: news
   cancel-in-progress: false
 
 jobs:
+  # GitHub mette in pausa le azioni programmate dei repository senza modifiche da 60 giorni.
+  # Una volta a settimana riattiviamo questa azione via API, così il conto dei 60 giorni riparte.
+  keepalive:
+    if: github.event.schedule == '23 4 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Riattiva l'azione delle notizie
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/news.yml/enable" && echo "Azione riattivata"
+
   fetch:
+    if: github.event.schedule != '23 4 * * 1'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
