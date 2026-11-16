@@ -9,6 +9,7 @@
     { href: 'serie-a.html',      label: 'Serie A' },
     { href: 'classifica.html',   label: 'Classifica' },
     { href: 'coppa-italia.html', label: 'Coppa Italia' },
+    { href: 'notizie.html',      label: 'Notizie' },
   ];
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
