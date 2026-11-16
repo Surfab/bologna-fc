@@ -1,0 +1,38 @@
+# Ogni 30 minuti scarica le notizie di TuttoBolognaWeb e le pubblica nel ramo "news-data".
+# L'app le legge da raw.githubusercontent.com (stesso contenuto, senza blocchi CORS).
+# Il ramo news-data contiene un solo commit, sostituito a ogni giro: la cronologia di main resta pulita.
+name: Notizie TuttoBolognaWeb
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'   # minuti 7 e 37: lontano dall'ora piena, quando GitHub è più carico
+  workflow_dispatch: {}       # per lanciarla a mano dalla scheda Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: news
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scarica il feed
+        run: python3 scripts/fetch_news.py news.json
+
+      - name: Pubblica nel ramo news-data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir out && cp news.json out/ && cd out
+          git init -q -b news-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add news.json
+          git commit -q -m "Notizie aggiornate $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" news-data

@@ -87,8 +87,8 @@ main { max-width: 860px; margin: 0 auto; padding: 24px 16px calc(40px + env(safe
   .cd-icon { display: inline; }
   .badge { width: 44px; height: 44px; }
   .badge img { width: 36px; height: 36px; }
-  .site-nav { justify-content: safe center; overflow-x: auto; gap: 0; padding: 0 8px; min-height: 42px; }
-  .site-nav a { padding: 11px 10px; font-size: 0.85rem; white-space: nowrap; }
+  .site-nav { justify-content: safe center; overflow-x: auto; gap: 0; padding: 0 4px; min-height: 42px; }
+  .site-nav a { padding: 11px 7px; font-size: 0.85rem; white-space: nowrap; }
   .match-card { grid-template-columns: 1fr 80px 1fr; padding: 12px; }
   .team-name { font-size: .78rem; }
   .score { font-size: 1.1rem; }
